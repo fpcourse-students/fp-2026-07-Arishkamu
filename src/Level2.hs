@@ -60,7 +60,10 @@ foldNat z s = \case
 -- Без сопоставления с образцом и явной рекурсии.
 
 sumOrLength :: Either (Nat, Nat) String -> Nat
-sumOrLength = todo "2.1"
+sumOrLength = either leftHandler rightHandler
+  where
+  leftHandler = uncurry $ \a -> foldNat a S
+  rightHandler = foldr (\_ -> S) Z
 
 
 -- 2.2. Реализуйте map через unfoldr, не конструируя результат через [] и (:).
@@ -68,7 +71,9 @@ sumOrLength = todo "2.1"
 -- take 3 (map' (+1) [1..]) == [2,3,4].
 
 map' :: (a -> b) -> [a] -> [b]
-map' = todo "2.2"
+map' f = unfoldr $ \case
+  []   -> Nothing
+  x:xs -> Just (f x, xs)
 
 
 -- 2.3. Разное: словарь как частичная функция.
@@ -79,19 +84,21 @@ map' = todo "2.2"
 newtype MyMap k v = MyMap { myLookup :: k -> Maybe v }
 
 myEmpty :: MyMap k v
-myEmpty = todo "2.3 пустой словарь"
+myEmpty = MyMap { myLookup = (\_ -> Nothing) }
 
 myInsert :: Eq k => k -> v -> MyMap k v -> MyMap k v
-myInsert = todo "2.3 вставка"
+myInsert k v (MyMap mpLookUp) = MyMap $
+  \k_look -> if k == k_look then Just v else mpLookUp k_look
 
 myInsertMany :: (Eq k, Foldable t) => MyMap k v -> t (k, v) -> MyMap k v
-myInsertMany = todo "2.3 массовая вставка"
+myInsertMany mp = foldl (\r (k, v) -> myInsert k v r) mp
 
 myDelete :: Eq k => k -> MyMap k v -> MyMap k v
-myDelete = todo "2.3 удаление"
+myDelete k (MyMap mpLookUp) = MyMap $
+  \k_look -> if k == k_look then Nothing else mpLookUp k_look
 
 myDeleteMany :: (Eq k, Foldable t) => MyMap k v -> t k -> MyMap k v
-myDeleteMany = todo "2.3 массовое удаление"
+myDeleteMany = foldr myDelete
 
 
 -- 2.4. Напишите полные инстансы Semigroup и Monoid.
@@ -99,15 +106,24 @@ myDeleteMany = todo "2.3 массовое удаление"
 -- Ограничения на тип значения не нужны: значения не объединяются.
 -- Нейтральный элемент — словарь, возвращающий Nothing для любого ключа.
 
-todoImpl ''Semigroup ''MyMap
-todoImpl ''Monoid ''MyMap
+instance Semigroup (MyMap k v) where
+  (MyMap lup1) <> (MyMap lup2) = MyMap $
+    \k -> maybe (lup2 k) Just (lup1 k)
+
+instance Monoid (MyMap k v) where
+  mempty = myEmpty
 
 
 -- 2.5. Напишите полный Foldable (MyMap k) для (Enum k, Bounded k).
 -- Обходите ключи в порядке [minBound .. maxBound], пропуская Nothing.
 -- Каждый существующий ключ даёт одно значение, даже если значения равны.
 
-todoImpl ''Foldable ''MyMap
+instance (Eq k, Enum k, Bounded k) => Foldable (MyMap k) where
+  foldMap f (MyMap lup1) = foldMapK minBound
+    where
+    foldMapK key = ( case lup1 key of
+      Nothing -> mempty
+      Just x  -> f x ) <> (if key == maxBound then mempty else foldMapK (succ key))
 
 
 -- 2.6. Разное: отформатируйте результат wordCount.
@@ -129,8 +145,11 @@ stdWcShow :: WordCountShow
 stdWcShow = WordCountShow { topSize = 10, smallWordsSize = 3 }
 
 wordCountShow :: WordCountShow -> Map String Int -> String
-wordCountShow = todo "2.6"
-
+wordCountShow WordCountShow{ topSize = ts, smallWordsSize = sws } =
+  toString . take ts . List.sortBy (\(k1, n) (k2, m) -> if n == m then compare k1 k2 else compare m n) . filter (\(k,_) -> length k > sws) . Map.toList
+  where
+  toString [] = ""
+  toString ((k,n):xs) = k ++ " : " ++ show n ++ "\n" ++ toString xs
 
 -- 2.7. Разное: сохраните значения Right в исходном порядке,
 -- пропустите Left. Метод решения выберите сами.
@@ -138,4 +157,6 @@ wordCountShow = todo "2.6"
 -- Конечный префикс результата должен работать на бесконечном входе.
 
 collectRights :: [Either e a] -> [a]
-collectRights = todo "2.7"
+collectRights = foldr (\ex l -> case ex of
+  Right x -> x : l
+  _       -> l) []
